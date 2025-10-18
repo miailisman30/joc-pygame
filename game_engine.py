@@ -95,11 +95,21 @@ class SpriteObject(RectObject):
 	def __init__(self, x=0, y=0, width=50, height=50, color=(255,0,0)):
 		super().__init__(x, y, width, height)
 		self.color = color
+		self.image = None
 	
 
 	def draw(self, surface):
-		# pygame.draw.rect(surface, self.color, (self.x, self.y, self.width, self.height))
-		pygame.draw.rect(surface, self.color, self.rect)
+		if self.image:
+			img = pygame.transform.scale(self.image, (int(self.width), int(self.height)))
+			surface.blit(img, self.rect.topleft)
+		else:
+			pygame.draw.rect(surface, self.color, self.rect)
+
+	def set_image(self, surface):
+		"""Assign a pygame.Surface to this sprite. The surface will be
+		scaled during draw to the sprite's width/height.
+		"""
+		self.image = surface
 
 
 class GameEngine:

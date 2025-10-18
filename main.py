@@ -45,7 +45,6 @@ class PlayerObject(RectObject):
 			pipe_rects.append(bottom.rect)
 
 		idx_collision = self.collide_list(pipe_rects)
-
 		if idx_collision != -1:
 			self.on_lose()
 			
@@ -79,6 +78,8 @@ class PipesManager(GameObject):
 		self.score = 0
 
 		self.pipes = []
+		# optional shared pipe image (Surface) that will be applied to spawned pipes
+		self.pipe_image = None
 		self.pipe_speed = 150
 		self.spawn_timer = 0.0
 		self.spawn_interval = 2.0
@@ -130,10 +131,49 @@ class PipesManager(GameObject):
 		x_spawn = width
 		top_pipe = PipeObject(x_spawn, 0, self.pipe_width, top_height, (0,255,0))
 		bottom_pipe = PipeObject(x_spawn, top_height + self.gap_height, self.pipe_width, bottom_height, (0,255,0))
+		# if a pipe image is set on this manager, assign images to pipes
+		if getattr(self, 'pipe_image', None):
+			# flip top vertically so opening faces down
+			top_img = pygame.transform.flip(self.pipe_image, False, True)
+			top_pipe.image = top_img
+			bottom_pipe.image = self.pipe_image
+
 		# store as a tuple (top, bottom)
 		self.pipes.append((top_pipe, bottom_pipe))
 		self.add_child(top_pipe)
 		self.add_child(bottom_pipe)
+
+	def set_pipe_image(self, surface):
+		"""Set the shared pipe image Surface used for newly spawned pipes
+		and apply it immediately to any existing pipes. Top pipes will get a
+		vertically flipped version so the openings face correctly.
+
+		Args:
+			surface (pygame.Surface|None): image to use for pipes, or None to
+			use the colored rect fallback.
+		"""
+		self.pipe_image = surface
+		for pair in self.pipes:
+			top, bottom = pair
+			if surface is None:
+				top.image = None
+				bottom.image = None
+			else:
+				top.image = pygame.transform.flip(surface, False, True)
+				bottom.image = surface
+
+	def load_and_set_pipe_image(self, path):
+		"""Load an image from `path` and set it as the pipe image. Returns
+		True on success, False otherwise.
+		"""
+		try:
+			img = pygame.image.load(path).convert_alpha()
+			self.set_pipe_image(img)
+			return True
+		except Exception as e:
+			print(f"Failed to load pipe image '{path}':", e)
+			self.set_pipe_image(None)
+			return False
 
 	def reset(self):
 		# remove pipe pairs and children safely
@@ -249,12 +289,31 @@ def main(argv=None):
 	player_x_pos = 100
 
 	pipes = PipesManager(player_x_pos)
+	loaded_img = None
+	for fn in ("images/nr2.png", "images/pipe.png"):
+		try:
+			loaded_img = pygame.image.load(fn).convert_alpha()
+			print(f"Loaded pipe image: {fn}")
+			break
+		except Exception:
+			loaded_img = None
+
+	# attach the loaded image (or None) to the pipes manager
+	pipes.pipe_image = loaded_img
+
 	# game_engine.add_object(pipes)
 	end_screen_manager.add_child(pipes)
 
 	player = PlayerObject(player_x_pos, 100, 50, 50, (255,0,0), pipes_manager=pipes, on_lose=end_screen_manager.show_game_over)
 	# game_engine.add_object(player)
 	end_screen_manager.add_child(player)
+
+	try:
+		player_img = pygame.image.load("images/saila1.png").convert_alpha()
+		player.sprite.set_image(player_img)
+		print("Loaded player image: images/saila1.png")
+	except Exception:
+		print("Player image images/saila1.png not found; using colored rect")
 
 
 	window.run()

@@ -1,1 +1,1 @@
-		# self.x += dx * self.speed * dt
+add_object
