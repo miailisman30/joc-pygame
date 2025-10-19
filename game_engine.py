@@ -21,21 +21,34 @@ import pygame
 from pygame import gfxdraw
 
 from abc import ABC, abstractmethod
+from typing import TypeVar, Type, Optional, cast
+
+# Type variable for get_child_of_type so the return type matches the requested class
+# Put it here so it's defined before the GameObject class that uses it.
+T = TypeVar('T', bound='GameObject')
 			
 class GameObject():
 	# has position, draw recursively
 	def __init__(self, x=0, y=0):
 		self.x = x
 		self.y = y
-		self.children = []
+		self.children: list[GameObject] = []
 		# reference to parent object (None for root)
-		self.parent_obj = None
+		self.parent_obj: GameObject | None = None
 		self.enabled = True
 
-	def get_child_of_type(self, cls_type):
+	# tell pylance that return type is of type cls_type or None
+	def get_child_of_type(self, cls_type: Type[T]) -> Optional[T]:
+		"""Return the first child that is an instance of ``cls_type``.
+
+		The return type is generic so static checkers (Pylance/mypy)
+		can infer the concrete subclass type when calling e.g.
+		get_child_of_type(SpriteObject) -> Optional[SpriteObject].
+		"""
 		for child in self.children:
 			if isinstance(child, cls_type):
-				return child
+				# cast so the type-checker knows this is T, not plain GameObject
+				return cast(T, child)
 		return None
 
 	def add_child(self, child):
@@ -77,6 +90,7 @@ class GameObject():
 		parent_x, parent_y = self.parent_obj.get_abs_pos()
 		return (parent_x + self.x, parent_y + self.y)
 
+
 class RectObject(GameObject):
 	def __init__(self, x=0, y=0, width=50, height=50):
 		super().__init__(x, y)
@@ -96,7 +110,6 @@ class SpriteObject(RectObject):
 		super().__init__(x, y, width, height)
 		self.color = color
 		self.image = None
-	
 
 	def draw(self, surface):
 		if self.image:
@@ -111,6 +124,13 @@ class SpriteObject(RectObject):
 		"""
 		self.image = surface
 
+def load_image(filename):
+	try:
+		img = pygame.image.load(filename).convert_alpha()
+		return img
+	except Exception as e:
+		print(f"Error loading image {filename}: {e}")
+		return None
 
 class GameEngine:
 	def __init__(self, surface):
@@ -124,7 +144,7 @@ class GameEngine:
 	def draw(self):
 		self.rootObject.draw_all(self.surface)
 		
-	def handle_events(self):
+	def handle_quit(self):
 		for event in pygame.event.get():
 			if event.type == pygame.QUIT:
 				self.running = False
@@ -143,23 +163,34 @@ class GameEngine:
 		
 
 
-class GameWindow:
-	def __init__(self, width=800, height=600, fps=60):
+class GameEnvironment:
+	def __init__(self, width=800, height=600, headless=False, fps=60):
+		# initialize pygame modules
 		pygame.init()
-		pygame.display.set_caption("Pygame Boilerplate")
 		self.width = width
 		self.height = height
 		self.fps = fps
-		self.screen = pygame.display.set_mode((self.width, self.height))
 		self.clock = pygame.time.Clock()
-		self.running = False
+		self.headless = bool(headless)
 
-		# Simple game stats
+		# When running headless we do not create a visible window. Instead
+		# we render to an off-screen Surface. This avoids creating an OS
+		# window which is useful for automated runs / CI.
+		if self.headless:
+			# do not call display.set_mode; create a plain Surface instead
+			self.screen = pygame.Surface((self.width, self.height))
+		else:
+			pygame.display.init()
+			pygame.display.set_caption("Pygame Boilerplate")
+			self.screen = pygame.display.set_mode((self.width, self.height))
+
 		self.bg_color = pygame.Color("#111111")
+		# font works without a display surface as long as pygame.font is initialized
 		self.font = pygame.font.Font(None, 24)
 
 		# Game engine
 		self.game_engine = GameEngine(self.screen)
+		
 
 	def draw_fps(self):
 		fps_text = f"FPS: {int(self.clock.get_fps())}"
@@ -168,23 +199,46 @@ class GameWindow:
 
 	def draw(self):
 		self.screen.fill(self.bg_color)
-
-		# draw game engine objects
-		self.game_engine.draw()  # Uncomment if using GameEngine
-
-		# FPS
 		self.draw_fps()
+		self.game_engine.draw()
+		# Only flip/update the display when not headless. In headless mode
+		# we keep rendering into the off-screen Surface so callers can still
+		# inspect it if needed (for screenshots/tests) without creating a window.
+		if not self.headless:
+			pygame.display.flip()
 
-		pygame.display.flip()
+	def set_headless(self, headless):
+		# Allow switching between headless and windowed at runtime. This
+		# will (re)create the screen Surface appropriately.
+		headless = bool(headless)
+		if self.headless == headless:
+			return
+		self.headless = headless
+		if headless:
+			# shut down the display subsystem and create an off-screen surface
+			try:
+				pygame.display.quit()
+			except Exception:
+				pass
+			self.screen = pygame.Surface((self.width, self.height))
+		else:
+			# re-init display and create a visible window
+			pygame.display.init()
+			pygame.display.set_caption("Pygame Boilerplate")
+			self.screen = pygame.display.set_mode((self.width, self.height))
+		# update GameEngine surface reference
+		self.game_engine.surface = self.screen
+
+	def step(self, dt):
+		self.game_engine.update(dt)
+		self.draw()
 
 	def run(self):
 		self.game_engine.running = True
 		while self.game_engine.running:
+			self.game_engine.handle_quit()
 			dt = self.clock.tick(self.fps) / 1000.0  # seconds
-			self.game_engine.handle_events()
-			self.game_engine.update(dt)
-			self.draw()
-
+			self.step(dt)
 		pygame.quit()
 
 
