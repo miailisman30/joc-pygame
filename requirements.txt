@@ -1,1 +1,7 @@
 pygame>=2.0.0
+gymnasium>=0.29.1
+numpy>=1.24
+# For training script; skip if you install your own torch
+torch>=2.1; platform_system != "Darwin" or platform_machine != "arm64"
+stable-baselines3[extra]>=2.3.2
+tensorboard>=2.15

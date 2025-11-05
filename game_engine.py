@@ -125,8 +125,19 @@ class SpriteObject(RectObject):
 		self.image = surface
 
 def load_image(filename):
+	"""Load an image and convert if a display surface exists.
+
+	In headless mode (no display), avoid convert_alpha() to prevent
+	"No video mode has been set" errors. Return the unconverted surface.
+	"""
 	try:
-		img = pygame.image.load(filename).convert_alpha()
+		img = pygame.image.load(filename)
+		# Only convert if display is initialized and a surface exists
+		if pygame.display.get_init() and pygame.display.get_surface() is not None:
+			try:
+				img = img.convert_alpha()
+			except Exception:
+				img = img.convert()
 		return img
 	except Exception as e:
 		print(f"Error loading image {filename}: {e}")
@@ -201,32 +212,25 @@ class GameEnvironment:
 		self.screen.fill(self.bg_color)
 		self.draw_fps()
 		self.game_engine.draw()
-		# Only flip/update the display when not headless. In headless mode
-		# we keep rendering into the off-screen Surface so callers can still
-		# inspect it if needed (for screenshots/tests) without creating a window.
 		if not self.headless:
 			pygame.display.flip()
 
 	def set_headless(self, headless):
-		# Allow switching between headless and windowed at runtime. This
-		# will (re)create the screen Surface appropriately.
 		headless = bool(headless)
 		if self.headless == headless:
 			return
 		self.headless = headless
 		if headless:
-			# shut down the display subsystem and create an off-screen surface
 			try:
 				pygame.display.quit()
 			except Exception:
 				pass
 			self.screen = pygame.Surface((self.width, self.height))
 		else:
-			# re-init display and create a visible window
+
 			pygame.display.init()
 			pygame.display.set_caption("Pygame Boilerplate")
 			self.screen = pygame.display.set_mode((self.width, self.height))
-		# update GameEngine surface reference
 		self.game_engine.surface = self.screen
 
 	def step(self, dt):

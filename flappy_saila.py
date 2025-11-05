@@ -40,11 +40,7 @@ class PlayerObject(RectObject):
 			new_pos = 0
 			self.velocity_y = 0
 		self.y = new_pos
-		# keep our collision rect in sync with position
 
-		# collision detection with pipes
-		# PipesManager now stores pipes as a list of (top_pipe, bottom_pipe) tuples.
-		# Build a flat list of rects for collision testing.
 		pipe_rects = []
 		for pair in self.pipes_manager.pipes:
 			top, bottom = pair
@@ -61,12 +57,8 @@ class PlayerObject(RectObject):
 		surf = pygame.font.Font(None, 24).render(fps_text, True, pygame.Color("white"))
 		surface.blit(surf, (150, 8))
 
-		# Draw a horizontal line at the y position of the next pipe gap for debugging
-		# Use the player's world x to query the pipes manager. If no pipes exist,
-		# next_pipe_pos returns (None, None) and we skip drawing the line.
 		gap_x, gap_y = self.pipes_manager.next_pipe_pos(self.x)
 		if gap_y is not None:
-			# draw across the whole screen
 			color = pygame.Color("yellow")
 			pygame.draw.line(surface, color, (0, int(gap_y)), (width, int(gap_y)), 2)
 
@@ -85,7 +77,6 @@ class PipesManager(GameObject):
 		self.score = 0
 
 		self.pipes: list[tuple[PipeObject, PipeObject]] = []
-		# optional shared pipe image (Surface) that will be applied to spawned pipes
 		self.pipe_image: pygame.Surface | None = None
 		self.pipe_speed = 150
 		self.spawn_timer = 0.0
@@ -99,26 +90,20 @@ class PipesManager(GameObject):
 			self.spawn_timer -= self.spawn_interval
 			self.spawn_pipe()
 
-		# Iterate over pipe pairs (top, bottom)
 		for pair in self.pipes[:]:
 			top, bottom = pair
-			# move both pipes left
 			top.x -= self.pipe_speed * dt
 			bottom.x -= self.pipe_speed * dt
 
-			# update their rects via their update calls
 			top.update(dt)
 			bottom.update(dt)
 
-			# increase score once per pair when the pair passes scoring x position
 			if not getattr(top, 'passed_score', False) and top.x + top.width < self.x_pos_score:
 				top.passed_score = True
 				print("Score!")
 				self.score += 1
 
-			# remove pair if completely off-screen
 			if top.x + top.width < 0:
-				# remove both from children and from pipes list
 				try:
 					self.children.remove(top)
 				except ValueError:
@@ -138,20 +123,16 @@ class PipesManager(GameObject):
 		x_spawn = width
 		top_pipe = PipeObject(x_spawn, 0, self.pipe_width, top_height, (0,255,0))
 		bottom_pipe = PipeObject(x_spawn, top_height + self.gap_height, self.pipe_width, bottom_height, (0,255,0))
-		# if a pipe image is set on this manager, assign images to pipes
 		if self.pipe_image:
-			# flip top vertically so opening faces down
 			top_img = pygame.transform.flip(self.pipe_image, False, True)
 			top_pipe.image = top_img
 			bottom_pipe.image = self.pipe_image
 
-		# store as a tuple (top, bottom)
 		self.pipes.append((top_pipe, bottom_pipe))
 		self.add_child(top_pipe)
 		self.add_child(bottom_pipe)
 
 	def reset(self):
-		# remove pipe pairs and children safely
 		for pair in self.pipes[:]:
 			top, bottom = pair
 			try:
@@ -163,7 +144,6 @@ class PipesManager(GameObject):
 			except ValueError:
 				pass
 		self.pipes.clear()
-		# children that are not pipes will remain
 		self.spawn_timer = 0.0
 		self.score = 0
 
@@ -183,27 +163,20 @@ class PipesManager(GameObject):
 			(tuple): (gap_x, gap_y) coordinates of the center of the gap, or (None, None)
 			if no pipes exist.
 		"""
-		# Defensive: no pipes
 		if not self.pipes:
 			return (None, None)
 
-		# We consider the pipe's reference x to be the left edge of the pipe sprite
-		# Compute an effective player x that moves the selection backward by offset
+
 		effective_x = x_player_pos - offset
 
-		# Find the first pipe pair whose right edge is >= effective_x, or whose
-		# center is >= effective_x. Using left edge + width/2 gives center x.
 		for pair in self.pipes:
 			top, bottom = pair
 			pipe_center_x = top.x + top.width / 2
-			# If the pipe center is in front of (or at) the effective player x, choose it
 			if pipe_center_x >= effective_x:
 				gap_center_x = pipe_center_x
-				# gap center y is top.height + gap_height/2
 				gap_center_y = top.height + self.gap_height / 2
 				return (gap_center_x, gap_center_y)
 
-		# If none found (all pipes are behind), return the last pipe's gap
 		last_top, last_bottom = self.pipes[-1]
 		return (last_top.x + last_top.width / 2, last_top.height + self.gap_height / 2)
 
@@ -232,26 +205,21 @@ class EndScreenManager(GameObject):
 			rect = surf.get_rect(center=(width//2, height//2))
 			surface.blit(surf, rect.topleft)
 
-	# detect if you passed a pipe and increase score
 
 
 	def update(self, dt):
-		# listen for R key to restart if game is over
 		if self.is_game_over:
 			keys = pygame.key.get_pressed()
 			if keys[pygame.K_r]:
 				print("Restarting game...")
 				self.is_game_over = False
 				self.set_enable_children(True)
-				# reset player position and pipes
 				pl = self.get_child_of_type(PlayerObject)
 				if pl:
 					pl.x = 100
 					pl.y = 100
 					pl.velocity_y = 0
 				pm = self.get_child_of_type(PipesManager)
-				# properly remove existing pipe sprites and reset spawn timer so
-				# pipes don't immediately respawn at the same positions
 				if pm:
 					pm.reset()
 
@@ -259,10 +227,10 @@ class EndScreenManager(GameObject):
 class FlappySailaGame(GameEnvironment):
 	def __init__(self, width=800, height=600, headless=False, fps=60):
 		super().__init__(width, height, headless, fps)
-		# window = GameEnvironment(width=width, height=height, fps=fps)
 
 		end_screen_manager = EndScreenManager()
 		self.game_engine.add_object(end_screen_manager)
+		self.end_screen_manager = end_screen_manager
 
 		player_x_pos = 100
 
@@ -279,18 +247,36 @@ class FlappySailaGame(GameEnvironment):
 		super().run()
 
 	def step_ai(self, dt, jump: bool):
-		'''Step the game simulation by dt seconds, applying AI action.
-		returns the state after the step.'''
 		if jump:
 			self.player.jump_requested = True
 		super().step(dt)
-		# gather state info to return
 		state = {}
 		state['player_y'] = self.player.y
 		state['player_velocity_y'] = self.player.velocity_y
-		# get next pipe gap position
 		gap_x, gap_y = self.player.pipes_manager.next_pipe_pos(self.player.x)
-		# gap_x may be None if there are no pipes; avoid subtracting from None
-		state['next_pipe_gap_x_distance'] = gap_x - self.player.x
-		state['next_pipe_gap_y'] = gap_y
+		if gap_x is None:
+			state['next_pipe_gap_x_distance'] = width - self.player.x
+			state['next_pipe_gap_y'] = height / 2
+		else:
+			state['next_pipe_gap_x_distance'] = gap_x - self.player.x
+			state['next_pipe_gap_y'] = gap_y
 		return state
+
+	def is_game_over(self) -> bool:
+		return getattr(self, 'end_screen_manager', None) is not None and self.end_screen_manager.is_game_over
+
+	def current_score(self) -> int:
+		pm = self.player.pipes_manager if hasattr(self, 'player') else None
+		return pm.score if pm is not None else 0
+
+	def reset_game(self):
+		if hasattr(self, 'end_screen_manager') and self.end_screen_manager is not None:
+			self.end_screen_manager.is_game_over = False
+			self.end_screen_manager.set_enable_children(True)
+		if hasattr(self, 'player') and self.player is not None:
+			self.player.x = 100
+			self.player.y = 100
+			self.player.velocity_y = 0
+		pm = self.player.pipes_manager if hasattr(self, 'player') else None
+		if pm:
+			pm.reset()
