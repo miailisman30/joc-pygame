@@ -15,6 +15,7 @@ import argparse
 import glob
 import re
 import os
+import shutil
 from typing import List, Optional, Tuple
 
 import numpy as np
@@ -137,6 +138,9 @@ def main():
     parser.add_argument("--model", type=str, default="", help="Path to .zip model (overrides auto selection)")
     parser.add_argument("--runs", type=str, default="runs/ppo", help="Folder to search for PPO checkpoints")
     parser.add_argument("--auto-best", action="store_true", help="Probe all checkpoints to pick the best")
+    parser.add_argument("--export-best", type=str, default="", help="Copy the selected model to this path (adds .zip if missing)")
+    parser.add_argument("--include-stats", action="store_true", help="When exporting, also copy vecnormalize.pkl next to the export if found")
+    parser.add_argument("--export-only", action="store_true", help="Export the selected model and exit without rendering")
     parser.add_argument("--episodes", type=int, default=3)
     parser.add_argument("--frame-skip", type=int, default=1)
     parser.add_argument("--fps", type=int, default=60)
@@ -160,7 +164,32 @@ def main():
             return
         print(f"Auto-selected latest: {model_path}")
 
-    # Build VecEnv and attach normalization stats if present
+    if args.export_best:
+        dest = args.export_best
+        if os.path.isdir(dest):
+            dest = os.path.join(dest, os.path.basename(model_path))
+        if not dest.lower().endswith(".zip"):
+            dest = dest + ".zip"
+        os.makedirs(os.path.dirname(dest) or ".", exist_ok=True)
+        shutil.copy2(model_path, dest)
+        print(f"Exported model to {dest}")
+        if args.include_stats:
+            stats_candidates = [
+                os.path.join(os.path.dirname(model_path), "vecnormalize.pkl"),
+                os.path.join(os.path.dirname(args.runs.rstrip(os.sep)), "vecnormalize.pkl"),
+                os.path.join(args.runs, "vecnormalize.pkl"),
+            ]
+            for sp in stats_candidates:
+                if os.path.exists(sp):
+                    try:
+                        shutil.copy2(sp, os.path.join(os.path.dirname(dest), "vecnormalize.pkl"))
+                        print(f"Exported VecNormalize stats to {os.path.join(os.path.dirname(dest), 'vecnormalize.pkl')}")
+                    except Exception:
+                        pass
+                    break
+        if args.export_only:
+            return
+
     base_env = DummyVecEnv([lambda: FlappyGymEnv(headless=False, frame_skip=max(1, args.frame_skip))])
     stats_dir = os.path.dirname(model_path)
     env = _maybe_wrap_norm(base_env, stats_dir)
