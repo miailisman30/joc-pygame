@@ -34,7 +34,7 @@ def main():
     parser.add_argument("--fps", type=int, default=60, help="Target render FPS")
     parser.add_argument("--turbo", action="store_true", help="No FPS cap; as fast as possible")
     parser.add_argument("--epsilon", type=float, default=0.0, help="Exploration during eval (0=greedy)")
-    args = parser.parse_args()
+    args = parser.parse_args() 
 
     # Visible window for watching: headless=False
     env = FlappyGymEnv(headless=False, frame_skip=args.frame_skip, max_steps=10_000)

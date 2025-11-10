@@ -23,21 +23,16 @@ from pygame import gfxdraw
 from abc import ABC, abstractmethod
 from typing import TypeVar, Type, Optional, cast
 
-# Type variable for get_child_of_type so the return type matches the requested class
-# Put it here so it's defined before the GameObject class that uses it.
 T = TypeVar('T', bound='GameObject')
 			
 class GameObject():
-	# has position, draw recursively
 	def __init__(self, x=0, y=0):
 		self.x = x
 		self.y = y
 		self.children: list[GameObject] = []
-		# reference to parent object (None for root)
 		self.parent_obj: GameObject | None = None
 		self.enabled = True
 
-	# tell pylance that return type is of type cls_type or None
 	def get_child_of_type(self, cls_type: Type[T]) -> Optional[T]:
 		"""Return the first child that is an instance of ``cls_type``.
 
@@ -47,12 +42,10 @@ class GameObject():
 		"""
 		for child in self.children:
 			if isinstance(child, cls_type):
-				# cast so the type-checker knows this is T, not plain GameObject
 				return cast(T, child)
 		return None
 
 	def add_child(self, child):
-		# set parent reference on child, then add to children list
 		child.parent_obj = self
 		self.children.append(child)
 		
@@ -176,7 +169,6 @@ class GameEngine:
 
 class GameEnvironment:
 	def __init__(self, width=800, height=600, headless=False, fps=60):
-		# initialize pygame modules
 		pygame.init()
 		self.width = width
 		self.height = height
@@ -184,11 +176,7 @@ class GameEnvironment:
 		self.clock = pygame.time.Clock()
 		self.headless = bool(headless)
 
-		# When running headless we do not create a visible window. Instead
-		# we render to an off-screen Surface. This avoids creating an OS
-		# window which is useful for automated runs / CI.
 		if self.headless:
-			# do not call display.set_mode; create a plain Surface instead
 			self.screen = pygame.Surface((self.width, self.height))
 		else:
 			pygame.display.init()
@@ -196,10 +184,8 @@ class GameEnvironment:
 			self.screen = pygame.display.set_mode((self.width, self.height))
 
 		self.bg_color = pygame.Color("#111111")
-		# font works without a display surface as long as pygame.font is initialized
 		self.font = pygame.font.Font(None, 24)
 
-		# Game engine
 		self.game_engine = GameEngine(self.screen)
 		
 

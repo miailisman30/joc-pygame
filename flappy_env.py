@@ -47,6 +47,13 @@ class FlappyGymEnv(gym.Env):
         max_steps: int = 2000,
         shaping: bool = True,
         shaping_weights: Optional[Dict[str, float]] = None,
+        # Curriculum options
+        curriculum: bool = False,
+        curriculum_episodes: int = 300,
+        start_gap: int = 240,
+        end_gap: int = 140,
+        start_speed: int = 120,
+        end_speed: int = 200,
     ):
         super().__init__()
         self.game = FlappySailaGame(width=800, height=600, fps=60, headless=headless)
@@ -58,38 +65,60 @@ class FlappyGymEnv(gym.Env):
         self._prev_v_norm: float = 0.0
         self._prev_gap_y_norm: float = 0.5
         self._prev_player_y_norm: float = 0.5
+        # Curriculum state
+        self.curriculum = bool(curriculum)
+        self.curriculum_episodes = int(curriculum_episodes)
+        self.curr_episode = 0
+        self.start_gap = int(start_gap)
+        self.end_gap = int(end_gap)
+        self.start_speed = int(start_speed)
+        self.end_speed = int(end_speed)
 
-        # Reward shaping configuration
         self.shaping = bool(shaping)
         defaults = {
-            "alive": 0.05,          # living reward per step
-            "pipe_pass": 1.0,       # reward when score increases
-            "crash": -1.0,          # penalty on crash
-            "align": 0.5,           # encourages staying near gap center
-            "progress": 0.2,        # encourages reducing dx to gap
-            "smooth": 0.05,         # discourages sudden velocity changes
+            "alive": 0.1,           
+            "pipe_pass": 10.0,      
+            "crash": -5.0,          
+            "align": 0.8,           
+            "progress": 0.5,        
+            "smooth": 0.02,         
+            "distance": 0.3,        
         }
         if shaping_weights:
             defaults.update(shaping_weights)
         self.w = defaults
 
-        # Observation: 5 floats in [0,1]
-        self.observation_space = spaces.Box(low=0.0, high=1.0, shape=(5,), dtype=np.float32)
-        # Action: 0/1
+        self.observation_space = spaces.Box(low=0.0, high=1.0, shape=(8,), dtype=np.float32)
         self.action_space = spaces.Discrete(2)
 
-    # --- helpers ---
     def _observe(self) -> np.ndarray:
-        # Create a state vector normalized to 0..1
         state = self.game.step_ai(0.0, False)  # dt=0 to just read state
         player_y = float(state["player_y"]) / float(self.game.height)
-        # velocity range rough: [-1000, 1000]; clip, rescale to 0..1
+        
         v = np.clip(float(state["player_velocity_y"]) / 1000.0, -1.0, 1.0)
         v = (v + 1.0) / 2.0
+        
         dx = np.clip(float(state["next_pipe_gap_x_distance"]) / float(self.game.width), 0.0, 1.0)
         gap_y = float(state["next_pipe_gap_y"]) / float(self.game.height)
+        
+
+        player_to_gap_dy = abs(player_y - gap_y) 
+        
+        dist_to_ground = 1.0 - player_y
+        dist_to_ceiling = player_y
+        
         bias = 1.0
-        obs = np.array([player_y, v, dx, gap_y, bias], dtype=np.float32)
+        
+        obs = np.array([
+            player_y, 
+            v, 
+            dx, 
+            gap_y, 
+            player_to_gap_dy,
+            dist_to_ground,
+            dist_to_ceiling,
+            bias
+        ], dtype=np.float32)
         return obs
 
     def _advance(self, action: int) -> None:
@@ -108,6 +137,21 @@ class FlappyGymEnv(gym.Env):
         self.game.reset_game()
         self._steps = 0
         self._last_score = 0
+        # Apply curriculum after reset for next episode
+        if self.curriculum:
+            self.curr_episode += 1
+            frac = min(1.0, self.curr_episode / max(1, self.curriculum_episodes))
+            gap = int(self.start_gap + frac * (self.end_gap - self.start_gap))
+            speed = float(self.start_speed + frac * (self.end_speed - self.start_speed))
+            # Set on pipes manager
+            try:
+                pm = self.game.player.pipes_manager
+                pm.gap_height = gap
+                pm.pipe_speed = speed
+                # modestly adjust spawn interval as it speeds up
+                pm.spawn_interval = max(1.5, 2.2 - 0.3 * frac)
+            except Exception:
+                pass
         obs = self._observe()
         # initialize previous terms for shaping
         self._prev_player_y_norm = float(obs[0])
@@ -121,38 +165,37 @@ class FlappyGymEnv(gym.Env):
         self._advance(int(action))
         self._steps += 1
 
-        # observe new state for reward shaping
         obs = self._observe()
         player_y_norm = float(obs[0])
         v_norm = float(obs[1])
         dx_norm = float(obs[2])
         gap_y_norm = float(obs[3])
 
-        # base rewards
         score = self.game.current_score()
         reward = self.w["alive"]
         if score > self._last_score:
             reward += self.w["pipe_pass"]
             self._last_score = score
 
-        # shaping terms
         if self.shaping:
-            # alignment to gap center: higher when closer
-            align = 1.0 - abs(player_y_norm - gap_y_norm)  # in [0,1]
+            align = 1.0 - abs(player_y_norm - gap_y_norm)
             reward += self.w["align"] * align
-            # progress: positive when dx decreases
+            
+            progress = self._prev_dx_norm - dx_norm
             progress = self._prev_dx_norm - dx_norm
             reward += self.w["progress"] * progress
-            # smoothness: penalize large velocity change
+            
             smooth = -abs(v_norm - self._prev_v_norm)
             reward += self.w["smooth"] * smooth
+            
+            distance_bonus = 1.0 - dx_norm  # closer = higher reward
+            reward += self.w["distance"] * distance_bonus * 0.1
 
         terminated = self.game.is_game_over()
         if terminated:
             reward += self.w["crash"]
 
         truncated = self._steps >= self.max_steps
-        # update prev terms for next step
         self._prev_player_y_norm = player_y_norm
         self._prev_v_norm = v_norm
         self._prev_dx_norm = dx_norm
@@ -161,10 +204,7 @@ class FlappyGymEnv(gym.Env):
         return obs, reward, terminated, truncated, info
 
     def render(self):
-        # If not headless, pygame window is already shown by GameEnvironment
         if self.game.headless:
-            # return an RGB array of the current frame
-            # Convert pygame Surface to numpy array (H, W, 3)
             surf = self.game.screen
             arr = np.transpose(np.array(pygame.surfarray.pixels3d(surf)), (1, 0, 2))  # type: ignore
             return arr.copy()

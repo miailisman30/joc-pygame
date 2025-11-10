@@ -13,69 +13,101 @@ Usage examples:
 
 import argparse
 import glob
+import re
 import os
 from typing import List, Optional, Tuple
 
 import numpy as np
 import pygame
 from stable_baselines3 import PPO
+from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 
 from flappy_env import FlappyGymEnv
 
 
 def list_checkpoints(folder: str) -> List[str]:
-    # Look for final and step checkpoints
-    pats = [
-        os.path.join(folder, "ppo_flappy_final.zip"),
-        os.path.join(folder, "ppo_flappy_*_steps.zip"),
-    ]
-    files: List[str] = []
-    for p in pats:
-        files.extend(glob.glob(p))
-    # Unique and sort by steps if possible, keeping final first
-    files = list(dict.fromkeys(files))
-    final_first = []
-    rest = []
-    for f in files:
-        if f.endswith("ppo_flappy_final.zip"):
-            final_first.append(f)
-        else:
-            rest.append(f)
-    # Sort rest by numeric steps ascending
+    # Recursively search for checkpoints in runs/ppo and subfolders
+    best: List[str] = []
+    finals: List[str] = []
+    steps: List[str] = []
+    step_pat = re.compile(r"^ppo_flappy_(\d+)_steps\.zip$")
+    for root, _, files in os.walk(folder):
+        for name in files:
+            if name == "best_model.zip":
+                best.append(os.path.join(root, name))
+            elif name == "ppo_flappy_final.zip":
+                finals.append(os.path.join(root, name))
+            else:
+                m = step_pat.match(name)
+                if m:
+                    steps.append(os.path.join(root, name))
+    # Sort step checkpoints by numeric steps
     def steps_key(fp: str) -> int:
-        try:
-            base = os.path.basename(fp)
-            num = base.split("ppo_flappy_")[1].split("_steps.zip")[0]
-            return int(num)
-        except Exception:
-            return -1
-    rest.sort(key=steps_key)
-    return final_first + rest
+        m = step_pat.match(os.path.basename(fp))
+        return int(m.group(1)) if m else -1
+    steps.sort(key=steps_key)
+    # Return with priority: best, final, then step checkpoints
+    ordered = best + finals + steps
+    # Deduplicate while preserving order
+    seen = set()
+    result: List[str] = []
+    for fp in ordered:
+        if fp not in seen:
+            seen.add(fp)
+            result.append(fp)
+    return result
 
 
 def pick_latest(folder: str) -> Optional[str]:
     files = list_checkpoints(folder)
     if not files:
         return None
-    # Prefer final, otherwise highest steps (last in sorted list)
     if files[0].endswith("ppo_flappy_final.zip"):
         return files[0]
     return files[-1]
 
 
+def _maybe_wrap_norm(venv, stats_dir: str):
+    # Try model directory first, then parent directory as fallback
+    candidates = [
+        os.path.join(stats_dir, "vecnormalize.pkl"),
+        os.path.join(os.path.dirname(stats_dir), "vecnormalize.pkl"),
+    ]
+    for stats_path in candidates:
+        if os.path.exists(stats_path):
+            try:
+                venv = VecNormalize.load(stats_path, venv)
+                venv.training = False
+                venv.norm_reward = False
+                break
+            except Exception:
+                continue
+    return venv
+
+
 def quick_eval(model_path: str, episodes: int = 2, frame_skip: int = 2) -> float:
-    # Headless quick evaluation to estimate mean reward
-    env = FlappyGymEnv(headless=True, frame_skip=frame_skip)
-    model = PPO.load(model_path)
+    # Build VecEnv for compatibility with VecNormalize
+    base_env = DummyVecEnv([lambda: FlappyGymEnv(headless=True, frame_skip=frame_skip)])
+    stats_dir = os.path.dirname(model_path)
+    env = _maybe_wrap_norm(base_env, stats_dir)
+    model = PPO.load(model_path, env=env)
     total = 0.0
     for ep in range(episodes):
-        obs, _ = env.reset(seed=1234 + ep)
+        # Try to seed underlying envs for determinism
+        try:
+            env.env_method("reset", seed=1234 + ep)
+        except Exception:
+            pass
+        obs = env.reset()
         ep_r = 0.0
         while True:
             action, _ = model.predict(obs, deterministic=True)
-            obs, r, term, trunc, _ = env.step(int(action))
-            ep_r += r
-            if term or trunc:
+            obs, r, term, trunc, _ = env.step([int(action)])
+            # r, term, trunc may be vectorized (size 1)
+            r_scalar = float(np.array(r).reshape(-1)[0])
+            done = bool(np.array(term).reshape(-1)[0] or np.array(trunc).reshape(-1)[0])
+            ep_r += r_scalar
+            if done:
                 break
         total += ep_r
     env.close()
@@ -94,7 +126,6 @@ def pick_best(folder: str, probe_episodes: int = 2) -> Optional[Tuple[str, float
             if score > best_score:
                 best_fp, best_score = fp, score
         except Exception as e:
-            # Skip problematic files
             continue
     if best_fp is None:
         return None
@@ -129,15 +160,17 @@ def main():
             return
         print(f"Auto-selected latest: {model_path}")
 
-    # Visible window to watch
-    env = FlappyGymEnv(headless=False, frame_skip=max(1, args.frame_skip))
-    model = PPO.load(model_path)
+    # Build VecEnv and attach normalization stats if present
+    base_env = DummyVecEnv([lambda: FlappyGymEnv(headless=False, frame_skip=max(1, args.frame_skip))])
+    stats_dir = os.path.dirname(model_path)
+    env = _maybe_wrap_norm(base_env, stats_dir)
+    model = PPO.load(model_path, env=env)
 
     clock = pygame.time.Clock()
     target_fps = max(1, int(args.fps))
 
     for ep in range(args.episodes):
-        obs, _ = env.reset()
+        obs = env.reset()
         ep_r = 0.0
         steps = 0
         running = True
@@ -149,15 +182,24 @@ def main():
                     running = False
 
             action, _ = model.predict(obs, deterministic=True)
-            obs, r, term, trunc, info = env.step(int(action))
-            ep_r += r
+            step_out = env.step([int(action)])
+            if len(step_out) == 4:
+                obs, r, done_vec, infos = step_out
+                term_vec = done_vec
+                trunc_vec = np.zeros_like(done_vec)
+            else:
+                obs, r, term_vec, trunc_vec, infos = step_out
+            r_scalar = float(np.array(r).reshape(-1)[0])
+            done_flag = bool(np.array(term_vec).reshape(-1)[0]) or bool(np.array(trunc_vec).reshape(-1)[0])
+            info0 = infos[0] if isinstance(infos, (list, tuple)) and len(infos) > 0 else {}
+            ep_r += r_scalar
             steps += 1
 
             if not args.turbo:
                 clock.tick(target_fps)
 
-            if term or trunc or not running:
-                print(f"Episode {ep+1}/{args.episodes}: steps={steps}, reward={ep_r:.2f}, score={info.get('score', 0)}")
+            if done_flag or not running:
+                print(f"Episode {ep+1}/{args.episodes}: steps={steps}, reward={ep_r:.2f}, score={info0.get('score', 0)}")
                 break
 
     env.close()
