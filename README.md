@@ -53,10 +53,8 @@ Models are saved to `dqn_flappy.pt` periodically.
 python eval_agent.py --model dqn_flappy.pt --episodes 5 --frame-skip 2 --fps 60 --turbo
 ```
 
-Tips:
-- Press ESC or close the window to stop.
-- Use `--turbo` to remove the FPS cap; combine with `--frame-skip` for very fast playback.
-- Increase `--frame-skip` to speed up; reduce it for smoother motion.
+To watch the 1M timesteps model play: python eval_ppo.py --model runs/ppo/ppo_flappy_1000000_steps.zip --episodes 5 --frame-skip 2
+It's currently capped at 30 time-steps.
 
 ## PPO (Stable-Baselines3)
 
@@ -85,11 +83,6 @@ Launch TensorBoard:
 tensorboard --logdir runs
 ```
 
-Notes:
-- The trainer now supports VecNormalize (normalizes observations/rewards and saves stats to `runs/ppo/vecnormalize.pkl`).
-- An EvalCallback evaluates every `--eval-freq` steps and saves the best model to `runs/ppo/best_model.zip`.
-- The environment includes gentle reward shaping (alignment, progress, smoothness, distance bonus) and optional curriculum (gap size/speed ramp).
-- Tune shaping weights and curriculum defaults in `flappy_env.py`.
 
 Evaluate PPO (with optional auto-best and turbo):
 

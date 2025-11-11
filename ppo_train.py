@@ -126,7 +126,6 @@ def main():
             if not vf_part:
                 vf_part = pi_part
             return dict(pi=pi_part, vf=vf_part)
-        # Shared definition -> use same for pi & vf
         layers = [int(x) for x in spec.split(',') if x]
         if not layers:
             layers = [256, 256]
@@ -137,12 +136,8 @@ def main():
     act = nn.Tanh if args.activation == 'tanh' else nn.ReLU
 
     if args.from_model:
-        # Resume from a checkpoint
         print(f"[resume] Loading model from {args.from_model}")
         model = PPO.load(args.from_model, env=vec_env)
-        # Note: hyperparams (e.g., n_steps, batch_size) are loaded from the checkpoint
-        # and may differ from CLI defaults. This is expected when resuming.
-        # SB3 already initializes a logger when loading; no manual set needed.
     else:
         model = PPO(
             policy="MlpPolicy",
@@ -167,14 +162,11 @@ def main():
         )
 
     model.learn(total_timesteps=args.timesteps, callback=[checkpoint_cb, eval_cb])
-    # Always save a final model
     final_path = os.path.join(args.logdir, "ppo_flappy_final")
     model.save(final_path)
-    # If eval saved a best_model.zip inside logdir (or not), ensure one exists by copying final if needed
     try:
         best_path = os.path.join(args.logdir, "best_model.zip")
         if not os.path.exists(best_path):
-            # SB3 saves with .zip extension, ensure we write a .zip
             model.save(best_path.replace('.zip', ''))
     except Exception:
         pass
