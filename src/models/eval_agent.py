@@ -14,7 +14,7 @@ import numpy as np
 import torch
 import pygame
 
-from flappy_env import FlappyGymEnv
+from src.envs.flappy_env import FlappyGymEnv
 from train_dqn import QNet 
 
 

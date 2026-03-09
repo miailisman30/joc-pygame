@@ -1,5 +1,15 @@
+Metadata-Version: 2.4
+Name: game-engine-pygame
+Version: 0.1.0
+Summary: Simple Pygame boilerplate starter
+Author: Your Name
+Requires-Python: >=3.7
+Description-Content-Type: text/markdown
+Requires-Dist: pygame
+Dynamic: requires-python
+
 # Flappy Saila RL
--- Writen completely by A.I. --
+
 This repo contains a simple Flappy Bird–like game (`flappy_saila.py`) and a Gymnasium-compatible environment wrapper (`flappy_env.py`) so you can train reinforcement learning agents.
 
 ## Files

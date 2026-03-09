@@ -23,7 +23,7 @@ import pygame
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 
-from flappy_env import FlappyGymEnv
+from src.envs.flappy_env import FlappyGymEnv
 
 
 def list_checkpoints(folder: str) -> List[str]:

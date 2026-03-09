@@ -10,7 +10,7 @@ try:
 except Exception:
     import gym  # type: ignore
 
-from flappy_env import FlappyGymEnv
+from src.envs.flappy_env import FlappyGymEnv
 
 
 def main():
