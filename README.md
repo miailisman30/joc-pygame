@@ -1,6 +1,7 @@
+# Note
+I am pretty sure the 1M model works, I really can't remember how I made it work though, good luck if you are going to try
 
-
-#Flappy Saila Game
+# Flappy Saila Game
 -- Written by us --
 Flappy bird with some funny pictures :)
 
