@@ -1,4 +1,11 @@
-# Flappy Saila RL
+
+
+#Flappy Saila Game
+-- Written by us --
+Flappy bird with some funny pictures :)
+
+
+# Flappy Saila RL Model
 -- Writen completely by A.I. --
 This repo contains a simple Flappy Bird–like game (`flappy_saila.py`) and a Gymnasium-compatible environment wrapper (`flappy_env.py`) so you can train reinforcement learning agents.
 
