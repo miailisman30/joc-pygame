@@ -16,11 +16,8 @@ Install:
 """
 
 
-import argparse
 import pygame
-from pygame import gfxdraw
 
-from abc import ABC, abstractmethod
 from typing import TypeVar, Type, Optional, cast
 
 T = TypeVar('T', bound='GameObject')

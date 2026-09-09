@@ -7,15 +7,18 @@ Close the window or press ESC to exit early.
 """
 
 import argparse
-import time
+import os
+import sys
 from typing import Optional
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import numpy as np
 import torch
 import pygame
 
-from src.envs.flappy_env import FlappyGymEnv
-from train_dqn import QNet 
+from envs.flappy_env import FlappyGymEnv
+from train_dqn import QNet
 
 
 def load_policy(model_path: str, obs_dim: int, act_dim: int, device: str = "cpu") -> QNet:

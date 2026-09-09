@@ -31,7 +31,7 @@ try:
 except Exception:
     import gym  # type: ignore
 
-from src.envs.flappy_env import FlappyGymEnv
+from envs.flappy_env import FlappyGymEnv
 
 
 class QNet(nn.Module):

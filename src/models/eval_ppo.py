@@ -15,15 +15,18 @@ import argparse
 import glob
 import re
 import os
+import sys
 import shutil
 from typing import List, Optional, Tuple
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import numpy as np
 import pygame
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 
-from src.envs.flappy_env import FlappyGymEnv
+from envs.flappy_env import FlappyGymEnv
 
 
 def list_checkpoints(folder: str) -> List[str]:

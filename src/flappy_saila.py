@@ -1,4 +1,4 @@
-from src.engine.game_engine import GameEnvironment, SpriteObject, GameObject, RectObject, load_image
+from engine.game_engine import GameEnvironment, SpriteObject, GameObject, RectObject, load_image
 import sys
 import pygame
 import random

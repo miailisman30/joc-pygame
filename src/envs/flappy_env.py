@@ -182,7 +182,6 @@ class FlappyGymEnv(gym.Env):
             reward += self.w["align"] * align
             
             progress = self._prev_dx_norm - dx_norm
-            progress = self._prev_dx_norm - dx_norm
             reward += self.w["progress"] * progress
             
             smooth = -abs(v_norm - self._prev_v_norm)
